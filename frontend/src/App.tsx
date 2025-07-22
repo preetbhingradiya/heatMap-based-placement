@@ -1,8 +1,8 @@
 import { useState } from "react";
 import "./App.css";
-import MapView from "./components/MapView";
+// import MapView from "./components/MapView";
 import FileUploader from "./components/FileUploader";
-import Heatmap from "./components/Heatmap";
+// import Heatmap from "./components/Heatmap";
 import MainMap from "./components/MainMap";
 
 function App() {
