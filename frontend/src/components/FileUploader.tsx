@@ -15,7 +15,7 @@ const FileUploader = ({ onUploadSuccess }: { onUploadSuccess: (data: any) => voi
     const formData = new FormData();
     formData.append("file", file);
 
-    const res = await fetch("http://localhost:5000/upload", {
+    const res = await fetch("http://localhost:5000/user/upload", {
       method: "POST",
       body: formData,
     });
