@@ -21,7 +21,18 @@ const FileUploader = ({ onUploadSuccess }: { onUploadSuccess: (data: any) => voi
     });
 
     const result = await res.json();
-    onUploadSuccess(result); // pass parsed heatmap data
+          const parsedPoints = result
+        .map((pt: any) => {
+          const match = pt.point.match(/POINT\(([-\d.]+) ([-\d.]+)\)/);
+          if (!match) return null;
+          const lng = parseFloat(match[1]);
+          const lat = parseFloat(match[2]);
+          return [lat, lng];
+        })
+        .filter(Boolean);
+
+      onUploadSuccess(parsedPoints);
+    // onUploadSuccess(result); // pass parsed heatmap data
   };
 
   return (
