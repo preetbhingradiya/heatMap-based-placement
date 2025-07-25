@@ -7,3 +7,4 @@ const upload = multer({ dest: "uploads/" });
 export const router = expres.Router();
 
 router.post("/upload", upload.single("file"), uploadDatasetController.upload);
+router.get("/heatmap/:zone_id", uploadDatasetController.getZonData)
