@@ -6,6 +6,7 @@ import {pool } from "./config/db"
 export const app = express();
 
 app.use(cors());
+app.use(express.json())
 app.use("/user", router)
 
 pool.query("SELECT NOW()", (err, res) => {
