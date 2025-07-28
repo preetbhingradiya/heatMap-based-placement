@@ -61,7 +61,7 @@ export const getZonData = async (req: Request, res: Response) => {
   console.log(zoneId);
 
   const result = await pool.query(
-        `
+    `
     SELECT 
     ST_AsText(hp.geom) AS point,
     ST_Distance(
@@ -75,4 +75,47 @@ export const getZonData = async (req: Request, res: Response) => {
   );
 
   res.json(result.rows);
+};
+
+export const setLocations = async (req: Request, res: Response) => {
+  const { latitude, longitude, userId } = req.body;
+  
+  if (!latitude || !longitude || !userId) {
+    return res.status(400).json({ error: "Missing lat, lng or userId" });
+  }
+
+  try {
+    await pool.query(
+      "INSERT INTO locations (latitude, longitude, user_id) VALUES ($1, $2, $3)",
+      [latitude, longitude, userId]
+    );
+
+    console.log("📍 New position recorded:", { latitude, longitude, userId });
+    res.status(201).json({ message: "Location stored successfully" });
+  } catch (err) {
+    console.error("❌ Error inserting location:", err);
+    res.sendStatus(500);
+  }
+};
+
+
+export const getLocations = async (req: Request, res: Response) => {
+  const userId = req.params.user_id as string;
+
+  if (!userId) {
+    return res.status(400).json({ error: "Missing userId in query" });
+  }
+
+  try {
+    const result = await pool.query(
+      "SELECT latitude, longitude, timestamp FROM locations WHERE user_id = $1 ORDER BY timestamp ASC",
+      [userId]
+    );
+
+    console.log(`📦 Fetched ${result.rowCount} locations for ${userId}`);
+    res.json(result.rows);
+  } catch (err) {
+    console.error("❌ Error fetching locations:", err);
+    res.sendStatus(500);
+  }
 };

@@ -1,4 +1,3 @@
-
 // import { useEffect, useRef } from "react";
 // import L from "leaflet";
 // import "leaflet.heat";
@@ -80,6 +79,7 @@
 
 // export default MainMap;
 
+// 2
 
 // import { useEffect, useRef } from "react";
 // import L from "leaflet";
@@ -183,6 +183,10 @@
 
 // export default MainMap;
 
+// "http://localhost:3000/user/set/location";
+// http://localhost:3000/user/find/location
+
+
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet.heat";
@@ -202,16 +206,36 @@ const MainMap = ({ uploadedPoints }: Props) => {
   const allPointsRef = useRef<[number, number][]>([]);
   const recentPointsRef = useRef<[number, number, number][]>([]);
 
-  // Reverse geocode using OpenStreetMap Nominatim
+  const pathRef = useRef<[number, number][]>([]);
+  const USER_ID = "abc-123"; // Replace with actual user ID from auth if needed
+
   const fetchLocationName = async (lat: number, lng: number): Promise<string> => {
     try {
       const response = await fetch(
         `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`
       );
       const data = await response.json();
-      return data.display_name || "Unknown location";
-    } catch (err) {
+      return data.address?.suburb || data.address?.neighbourhood || data.address?.road || data.display_name || "Unknown location";
+    } catch {
       return "Unknown location";
+    }
+  };
+
+  const sendLocationToBackend = async (lat: number, lng: number) => {
+    try {
+      await fetch("http://localhost:5000/user/set/location", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: USER_ID,
+          latitude: lat,
+          longitude: lng,
+        }),
+      });
+    } catch (err) {
+      console.error("Failed to send location to backend:", err);
     }
   };
 
@@ -224,7 +248,7 @@ const MainMap = ({ uploadedPoints }: Props) => {
     fadedPolylineRef.current?.setLatLngs(faded);
     activePolylineRef.current?.setLatLngs(recent);
 
-    // Update heatmap
+    // Heatmap
     recent.forEach(([lat, lng]) => {
       recentPointsRef.current.push([lat, lng, 1.0]);
     });
@@ -235,8 +259,27 @@ const MainMap = ({ uploadedPoints }: Props) => {
     const fadedHeatPoints = recentPointsRef.current.map((pt, idx, arr) =>
       idx === arr.length - 1 ? pt : [pt[0], pt[1], 0.3]
     );
-    heatLayerRef.current.setLatLngs(fadedHeatPoints);
+    heatLayerRef.current?.setLatLngs(fadedHeatPoints);
   };
+
+  useEffect(() => {
+    const loadUserPath = async () => {
+      try {
+        const res = await fetch(`http://localhost:5000/user/find/location/${USER_ID}`);
+        console.log("DATA", res);
+        
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          const coords: [number, number][] = data.map((loc) => [loc.latitude, loc.longitude]);
+          pathRef.current = coords;
+        }
+      } catch (err) {
+        console.error("Failed to load saved path:", err);
+      }
+    };
+
+    loadUserPath();
+  }, []);
 
   useEffect(() => {
     if (mapRef.current) return;
@@ -248,6 +291,10 @@ const MainMap = ({ uploadedPoints }: Props) => {
           pos.coords.longitude,
         ];
 
+        if (pathRef.current.length === 0) {
+          pathRef.current.push(currentLatLng);
+        }
+
         const map = L.map("map").setView(currentLatLng, 16);
         mapRef.current = map;
 
@@ -255,20 +302,18 @@ const MainMap = ({ uploadedPoints }: Props) => {
           attribution: "&copy; OpenStreetMap contributors",
         }).addTo(map);
 
-        // Heatmap layer
         heatLayerRef.current = (L as any).heatLayer([], {
           radius: 25,
           blur: 15,
           maxZoom: 17,
         }).addTo(map);
 
-        // Marker with popup
         const locationName = await fetchLocationName(currentLatLng[0], currentLatLng[1]);
-        markerRef.current = L.marker(currentLatLng).addTo(map)
-          .bindPopup(`You are here: ${locationName}`)
+        markerRef.current = L.marker(currentLatLng)
+          .addTo(map)
+          .bindPopup(locationName)
           .openPopup();
 
-        // Polylines
         fadedPolylineRef.current = L.polyline([], {
           color: "#4a90e2",
           weight: 2,
@@ -281,35 +326,34 @@ const MainMap = ({ uploadedPoints }: Props) => {
           opacity: 1.0,
         }).addTo(map);
 
-        // Store first point
-        const path: [number, number][] = [currentLatLng];
-        updateMapWithPoints(path);
+        updateMapWithPoints(pathRef.current);
 
-        // Start watching user movement
         const watchId = navigator.geolocation.watchPosition(
           async (pos) => {
             const newLatLng: [number, number] = [
               pos.coords.latitude,
               pos.coords.longitude,
             ];
+            console.log("📍 New position received:", newLatLng);
 
-            path.push(newLatLng);
+            pathRef.current.push(newLatLng);
+            updateMapWithPoints(pathRef.current);
 
-            updateMapWithPoints(path);
+            await sendLocationToBackend(newLatLng[0], newLatLng[1]);
+
             map.setView(newLatLng, map.getZoom());
 
             markerRef.current?.setLatLng(newLatLng);
-
             const placeName = await fetchLocationName(newLatLng[0], newLatLng[1]);
-            markerRef.current?.bindPopup(`You are here: ${placeName}`).openPopup();
+            markerRef.current?.bindPopup(placeName).openPopup();
           },
           (err) => {
-            console.error("Tracking error:", err.message);
+            console.error("Geolocation error:", err.message);
           },
           {
             enableHighAccuracy: true,
-            maximumAge: 5000,
-            timeout: 20000,
+            maximumAge: 0,
+            timeout: 1000,
           }
         );
 
@@ -324,7 +368,6 @@ const MainMap = ({ uploadedPoints }: Props) => {
     );
   }, []);
 
-  // Add uploaded points as faded heat
   useEffect(() => {
     if (uploadedPoints.length > 0 && heatLayerRef.current) {
       uploadedPoints.forEach((pt) => {
@@ -337,7 +380,6 @@ const MainMap = ({ uploadedPoints }: Props) => {
 };
 
 export default MainMap;
-
 
 
 // import { useEffect, useRef } from "react";
@@ -353,22 +395,25 @@ export default MainMap;
 //   const mapRef = useRef<L.Map | null>(null);
 //   const heatLayerRef = useRef<any>(null);
 //   const markerRef = useRef<L.Marker | null>(null);
-//   const activePolylineRef = useRef<L.Polyline | null>(null); // last 6 points
-//   const fadedPolylineRef = useRef<L.Polyline | null>(null); // older points
+//   const activePolylineRef = useRef<L.Polyline | null>(null);
+//   const fadedPolylineRef = useRef<L.Polyline | null>(null);
 
 //   const allPointsRef = useRef<[number, number][]>([]);
-//   const recentPointsRef = useRef<[number, number, number][]>([]); // for heatmap
+//   const recentPointsRef = useRef<[number, number, number][]>([]);
 
-//   // Simulated "DB" with initial point
-//   const dbRef = useRef<[number, number][]>([]);
+//   // ✅ Move path outside
+//   const pathRef = useRef<[number, number][]>([]);
 
-//   const fetchFromMockDB = () => {
-//     // In real app, replace with API call
-//     return dbRef.current;
-//   };
-
-//   const addNewPointToMockDB = (lat: number, lng: number) => {
-//     dbRef.current.push([lat, lng]);
+//   const fetchLocationName = async (lat: number, lng: number): Promise<string> => {
+//     try {
+//       const response = await fetch(
+//         `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`
+//       );
+//       const data = await response.json();
+//       return data.address?.suburb || data.address?.neighbourhood || data.address?.road || data.display_name || "Unknown location";
+//     } catch {
+//       return "Unknown location";
+//     }
 //   };
 
 //   const updateMapWithPoints = (points: [number, number][]) => {
@@ -380,7 +425,7 @@ export default MainMap;
 //     fadedPolylineRef.current?.setLatLngs(faded);
 //     activePolylineRef.current?.setLatLngs(recent);
 
-//     // Update heatmap
+//     // Heatmap
 //     recent.forEach(([lat, lng]) => {
 //       recentPointsRef.current.push([lat, lng, 1.0]);
 //     });
@@ -391,37 +436,41 @@ export default MainMap;
 //     const fadedHeatPoints = recentPointsRef.current.map((pt, idx, arr) =>
 //       idx === arr.length - 1 ? pt : [pt[0], pt[1], 0.3]
 //     );
-
-//     heatLayerRef.current.setLatLngs(fadedHeatPoints);
+//     heatLayerRef.current?.setLatLngs(fadedHeatPoints);
 //   };
 
 //   useEffect(() => {
 //     if (mapRef.current) return;
 
 //     navigator.geolocation.getCurrentPosition(
-//       (pos) => {
+//       async (pos) => {
 //         const currentLatLng: [number, number] = [
 //           pos.coords.latitude,
 //           pos.coords.longitude,
 //         ];
-//         dbRef.current.push(currentLatLng); // Add initial point to DB
 
-//         const map = L.map("map").setView(currentLatLng, 13);
+//         pathRef.current.push(currentLatLng);
+
+//         const map = L.map("map").setView(currentLatLng, 16);
 //         mapRef.current = map;
 
 //         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
 //           attribution: "&copy; OpenStreetMap contributors",
 //         }).addTo(map);
 
-//         // Heatmap
+//         // Heatmap layer
 //         heatLayerRef.current = (L as any).heatLayer([], {
 //           radius: 25,
 //           blur: 15,
 //           maxZoom: 17,
 //         }).addTo(map);
 
-//         // Marker
-//         markerRef.current = L.marker(currentLatLng).addTo(map).bindPopup("You are here").openPopup();
+//         // Marker + popup
+//         const locationName = await fetchLocationName(currentLatLng[0], currentLatLng[1]);
+//         markerRef.current = L.marker(currentLatLng)
+//           .addTo(map)
+//           .bindPopup(locationName)
+//           .openPopup();
 
 //         // Polylines
 //         fadedPolylineRef.current = L.polyline([], {
@@ -436,31 +485,37 @@ export default MainMap;
 //           opacity: 1.0,
 //         }).addTo(map);
 
-//         // Simulate user movement every 30 sec
-//         const moveInterval = setInterval(() => {
-//           const last = dbRef.current[dbRef.current.length - 1];
-//           const newLat = last[0] + (Math.random() - 0.5) * 0.01;
-//           const newLng = last[1] + (Math.random() - 0.5) * 0.01;
-//           addNewPointToMockDB(newLat, newLng);
-//         }, 30000); // Simulate movement
+//         updateMapWithPoints(pathRef.current);
 
-//         // Poll DB every 1 min
-//         const syncInterval = setInterval(() => {
-//           const allPoints = fetchFromMockDB();
-//           if (allPoints.length > 0) {
-//             const currentPos = allPoints[allPoints.length - 1];
-//             markerRef.current?.setLatLng(currentPos);
-//             map.setView(currentPos, 14);
-//             updateMapWithPoints(allPoints);
+//         // Real-time tracking
+//         const watchId = navigator.geolocation.watchPosition(
+//           async (pos) => {
+//             const newLatLng: [number, number] = [
+//               pos.coords.latitude,
+//               pos.coords.longitude,
+//             ];
+//             console.log("📍 New position received:", newLatLng);
+
+//             pathRef.current.push(newLatLng);
+//             updateMapWithPoints(pathRef.current);
+//             map.setView(newLatLng, map.getZoom());
+
+//             markerRef.current?.setLatLng(newLatLng);
+//             const placeName = await fetchLocationName(newLatLng[0], newLatLng[1]);
+//             markerRef.current?.bindPopup(placeName).openPopup();
+//           },
+//           (err) => {
+//             console.error("Geolocation error:", err.message);
+//           },
+//           {
+//             enableHighAccuracy: true,
+//             maximumAge: 0,
+//             timeout: 1000,
 //           }
-//         }, 60000);
-
-//         // Initial update
-//         updateMapWithPoints([currentLatLng]);
+//         );
 
 //         return () => {
-//           clearInterval(syncInterval);
-//           clearInterval(moveInterval);
+//           navigator.geolocation.clearWatch(watchId);
 //           map.remove();
 //         };
 //       },
@@ -470,11 +525,11 @@ export default MainMap;
 //     );
 //   }, []);
 
-//   // Upload points to heatmap
+//   // Handle uploaded points
 //   useEffect(() => {
 //     if (uploadedPoints.length > 0 && heatLayerRef.current) {
 //       uploadedPoints.forEach((pt) => {
-//         heatLayerRef.current.addLatLng([...pt, 0.3]); // faded
+//         heatLayerRef.current.addLatLng([...pt, 0.3]);
 //       });
 //     }
 //   }, [uploadedPoints]);
