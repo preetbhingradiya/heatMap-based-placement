@@ -25,7 +25,7 @@
 //     // Add heatmap
 //     const defaultPoints: [number, number, number?][] = [
 //       [21.2468, 72.8171, 0.5],
-//       [21.247, 72.8168, 0.7],
+//       [21.247, 72.8168, 0.8],
 //     ];
 
 //     heatLayerRef.current = (L as any).heatLayer(defaultPoints, {
@@ -109,7 +109,7 @@
 //     // Add heatmap with some default points
 //     const defaultPoints: [number, number, number?][] = [
 //       [21.2468, 72.8171, 0.5],
-//       [21.247, 72.8168, 0.7],
+//       [21.247, 72.8168, 0.8],
 //     ];
 
 //     heatLayerRef.current = (L as any).heatLayer(defaultPoints, {
@@ -189,12 +189,24 @@
 
 import { useEffect, useRef } from "react";
 import L from "leaflet";
-import "leaflet.heat";
+import "leaflet.heat"; 
 import "leaflet/dist/leaflet.css";
+import { v4 as uuidv4 } from 'uuid';
 
 type Props = {
   uploadedPoints: [number, number][];
 };
+
+const DEVICE_ID_KEY = "my_app_device_id";
+
+export function getDeviceId(): string {
+  let deviceId = localStorage.getItem(DEVICE_ID_KEY);
+  if (!deviceId) {
+    deviceId = uuidv4();
+    localStorage.setItem(DEVICE_ID_KEY, deviceId);
+  }
+  return deviceId;
+}
 
 const MainMap = ({ uploadedPoints }: Props) => {
   const mapRef = useRef<L.Map | null>(null);
@@ -206,8 +218,8 @@ const MainMap = ({ uploadedPoints }: Props) => {
   const allPointsRef = useRef<[number, number][]>([]);
   const recentPointsRef = useRef<[number, number, number][]>([]);
 
-  const pathRef = useRef<[number, number][]>([]);
-  const USER_ID = "abc-123"; // Replace with actual user ID from auth if needed
+  const pathRef = useRef<[number, number][]>([]); 
+  const UUID = getDeviceId() // Replace with actual user ID from auth if needed
 
   const fetchLocationName = async (lat: number, lng: number): Promise<string> => {
     try {
@@ -223,13 +235,13 @@ const MainMap = ({ uploadedPoints }: Props) => {
 
   const sendLocationToBackend = async (lat: number, lng: number) => {
     try {
-      await fetch("http://localhost:5000/user/set/location", {
+      await fetch("https://crazy-cars-cross.loca.lt/user/set/location", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          userId: USER_ID,
+          userId: UUID,
           latitude: lat,
           longitude: lng,
         }),
@@ -257,7 +269,7 @@ const MainMap = ({ uploadedPoints }: Props) => {
     }
 
     const fadedHeatPoints = recentPointsRef.current.map((pt, idx, arr) =>
-      idx === arr.length - 1 ? pt : [pt[0], pt[1], 0.3]
+      idx === arr.length - 1 ? pt : [pt[0], pt[1], 0.8]
     );
     heatLayerRef.current?.setLatLngs(fadedHeatPoints);
   };
@@ -265,7 +277,7 @@ const MainMap = ({ uploadedPoints }: Props) => {
   useEffect(() => {
     const loadUserPath = async () => {
       try {
-        const res = await fetch(`http://localhost:5000/user/find/location/${USER_ID}`);
+        const res = await fetch(`https://crazy-cars-cross.loca.lt/user/find/location/${UUID}`);
         console.log("DATA", res);
         
         const data = await res.json();
@@ -317,7 +329,7 @@ const MainMap = ({ uploadedPoints }: Props) => {
         fadedPolylineRef.current = L.polyline([], {
           color: "#4a90e2",
           weight: 2,
-          opacity: 0.3,
+          opacity: 0.8,
         }).addTo(map);
 
         activePolylineRef.current = L.polyline([], {
@@ -371,7 +383,7 @@ const MainMap = ({ uploadedPoints }: Props) => {
   useEffect(() => {
     if (uploadedPoints.length > 0 && heatLayerRef.current) {
       uploadedPoints.forEach((pt) => {
-        heatLayerRef.current.addLatLng([...pt, 0.3]);
+        heatLayerRef.current.addLatLng([...pt, 0.8]);
       });
     }
   }, [uploadedPoints]);
@@ -380,161 +392,3 @@ const MainMap = ({ uploadedPoints }: Props) => {
 };
 
 export default MainMap;
-
-
-// import { useEffect, useRef } from "react";
-// import L from "leaflet";
-// import "leaflet.heat";
-// import "leaflet/dist/leaflet.css";
-
-// type Props = {
-//   uploadedPoints: [number, number][];
-// };
-
-// const MainMap = ({ uploadedPoints }: Props) => {
-//   const mapRef = useRef<L.Map | null>(null);
-//   const heatLayerRef = useRef<any>(null);
-//   const markerRef = useRef<L.Marker | null>(null);
-//   const activePolylineRef = useRef<L.Polyline | null>(null);
-//   const fadedPolylineRef = useRef<L.Polyline | null>(null);
-
-//   const allPointsRef = useRef<[number, number][]>([]);
-//   const recentPointsRef = useRef<[number, number, number][]>([]);
-
-//   // ✅ Move path outside
-//   const pathRef = useRef<[number, number][]>([]);
-
-//   const fetchLocationName = async (lat: number, lng: number): Promise<string> => {
-//     try {
-//       const response = await fetch(
-//         `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`
-//       );
-//       const data = await response.json();
-//       return data.address?.suburb || data.address?.neighbourhood || data.address?.road || data.display_name || "Unknown location";
-//     } catch {
-//       return "Unknown location";
-//     }
-//   };
-
-//   const updateMapWithPoints = (points: [number, number][]) => {
-//     allPointsRef.current = points;
-
-//     const recent = points.slice(-6);
-//     const faded = points.slice(0, -6);
-
-//     fadedPolylineRef.current?.setLatLngs(faded);
-//     activePolylineRef.current?.setLatLngs(recent);
-
-//     // Heatmap
-//     recent.forEach(([lat, lng]) => {
-//       recentPointsRef.current.push([lat, lng, 1.0]);
-//     });
-//     if (recentPointsRef.current.length > 6) {
-//       recentPointsRef.current.splice(0, recentPointsRef.current.length - 6);
-//     }
-
-//     const fadedHeatPoints = recentPointsRef.current.map((pt, idx, arr) =>
-//       idx === arr.length - 1 ? pt : [pt[0], pt[1], 0.3]
-//     );
-//     heatLayerRef.current?.setLatLngs(fadedHeatPoints);
-//   };
-
-//   useEffect(() => {
-//     if (mapRef.current) return;
-
-//     navigator.geolocation.getCurrentPosition(
-//       async (pos) => {
-//         const currentLatLng: [number, number] = [
-//           pos.coords.latitude,
-//           pos.coords.longitude,
-//         ];
-
-//         pathRef.current.push(currentLatLng);
-
-//         const map = L.map("map").setView(currentLatLng, 16);
-//         mapRef.current = map;
-
-//         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-//           attribution: "&copy; OpenStreetMap contributors",
-//         }).addTo(map);
-
-//         // Heatmap layer
-//         heatLayerRef.current = (L as any).heatLayer([], {
-//           radius: 25,
-//           blur: 15,
-//           maxZoom: 17,
-//         }).addTo(map);
-
-//         // Marker + popup
-//         const locationName = await fetchLocationName(currentLatLng[0], currentLatLng[1]);
-//         markerRef.current = L.marker(currentLatLng)
-//           .addTo(map)
-//           .bindPopup(locationName)
-//           .openPopup();
-
-//         // Polylines
-//         fadedPolylineRef.current = L.polyline([], {
-//           color: "#4a90e2",
-//           weight: 2,
-//           opacity: 0.3,
-//         }).addTo(map);
-
-//         activePolylineRef.current = L.polyline([], {
-//           color: "blue",
-//           weight: 5,
-//           opacity: 1.0,
-//         }).addTo(map);
-
-//         updateMapWithPoints(pathRef.current);
-
-//         // Real-time tracking
-//         const watchId = navigator.geolocation.watchPosition(
-//           async (pos) => {
-//             const newLatLng: [number, number] = [
-//               pos.coords.latitude,
-//               pos.coords.longitude,
-//             ];
-//             console.log("📍 New position received:", newLatLng);
-
-//             pathRef.current.push(newLatLng);
-//             updateMapWithPoints(pathRef.current);
-//             map.setView(newLatLng, map.getZoom());
-
-//             markerRef.current?.setLatLng(newLatLng);
-//             const placeName = await fetchLocationName(newLatLng[0], newLatLng[1]);
-//             markerRef.current?.bindPopup(placeName).openPopup();
-//           },
-//           (err) => {
-//             console.error("Geolocation error:", err.message);
-//           },
-//           {
-//             enableHighAccuracy: true,
-//             maximumAge: 0,
-//             timeout: 1000,
-//           }
-//         );
-
-//         return () => {
-//           navigator.geolocation.clearWatch(watchId);
-//           map.remove();
-//         };
-//       },
-//       (err) => {
-//         alert("Geolocation failed: " + err.message);
-//       }
-//     );
-//   }, []);
-
-//   // Handle uploaded points
-//   useEffect(() => {
-//     if (uploadedPoints.length > 0 && heatLayerRef.current) {
-//       uploadedPoints.forEach((pt) => {
-//         heatLayerRef.current.addLatLng([...pt, 0.3]);
-//       });
-//     }
-//   }, [uploadedPoints]);
-
-//   return <div id="map" style={{ height: "100vh", width: "100%" }} />;
-// };
-
-// export default MainMap;

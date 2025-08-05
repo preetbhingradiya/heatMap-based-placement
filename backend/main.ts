@@ -5,7 +5,9 @@ import {pool } from "./config/db"
 
 export const app = express();
 
-app.use(cors());
+app.use(cors({
+  origin: "*", // or restrict to your frontend ngrok URL
+}));
 app.use(express.json())
 app.use("/user", router)
 
