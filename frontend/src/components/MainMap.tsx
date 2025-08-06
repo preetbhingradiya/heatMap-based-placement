@@ -195,7 +195,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 type Props = {
   uploadedPoints: [number, number][];
-};
+}; 
 
 const DEVICE_ID_KEY = "my_app_device_id";
 
